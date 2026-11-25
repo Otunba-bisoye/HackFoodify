@@ -1,0 +1,507 @@
+// 1. Setup
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 2. Enums
+enum Role {
+  CUSTOMER
+  CHAMPION
+  VENDOR
+  ADMIN
+}
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ChampionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  AWAITING_PAYMENT
+  PAYMENT_CONFIRMED
+  ACCEPTED
+  PREPARING
+  READY_FOR_PICKUP
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  UNPAID
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_DELIVERY
+}
+
+enum DiscountTarget {
+  FOOD
+  DELIVERY
+}
+
+enum CouponFundingType {
+  VENDOR
+  FOODIFY
+}
+
+enum VehicleType {
+  BICYCLE
+  MOTORBIKE
+  TRICYCLE
+  VAN
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum VendorTransactionType {
+  CREDIT_PENDING
+  EARNING_RELEASED
+  WITHDRAWAL
+  WITHDRAWAL_REFUND
+  REFUND_DEDUCTION
+}
+
+enum ChampionTransactionType {
+  EARNING_PENDING
+  EARNING_RELEASED
+  WITHDRAWAL
+  WITHDRAWAL_REFUND
+  BONUS
+}
+
+// 3. Models
+model User {
+  id          String  @id // Clerk User ID
+  email       String  @unique
+  name        String?
+  role        Role    @default(CUSTOMER)
+  phone       String? @unique
+  homeAddress String?
+  latitude    Float?
+  longitude   Float?
+
+  // Relations
+  vendorProfile   Vendor?
+  championProfile Champion?
+
+  // 🛡️ FIX: This is the ONLY relation needed for orders made by the user
+  orders Order[] @relation("CustomerOrders")
+
+  couponUsages CouponUsage[]
+  cart CartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deviceTokens DeviceToken[]
+  notifications Notification[]
+  supportMessages SupportMessage[]
+}
+
+model Vendor {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessName String
+  address      String
+  lat          Float?
+  lng          Float?
+  status       VendorStatus @default(PENDING)
+
+  image             String?
+  products          Product[]
+  orders            Order[]
+  coupons           Coupon[]
+  isAcceptingOrders Boolean   @default(true)
+  isSuspended       Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  bankCode        String?
+  bankName        String?
+  accountNumber   String?
+  accountName     String?
+
+  wallet          VendorWallet?
+}
+
+model VendorWallet {
+  id               String   @id @default(uuid())
+  vendorId         String   @unique
+  vendor           Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  pendingBalance   Decimal  @default(0) @db.Decimal(12, 2)
+  availableBalance Decimal  @default(0) @db.Decimal(12, 2)
+
+  transactions     VendorTransaction[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model VendorTransaction {
+  id            String          @id @default(uuid())
+  walletId      String
+  wallet        VendorWallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  amount        Decimal         @db.Decimal(12, 2)
+  type          VendorTransactionType // CREDIT_PENDING, EARNING_RELEASED, WITHDRAWAL, REFUND_DEDUCTION
+  status      TransactionStatus     @default(PENDING)
+  reference     String          @unique
+  description   String
+  createdAt     DateTime        @default(now())
+
+  @@index([walletId])
+}
+
+
+
+
+model Champion {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id],onDelete: Cascade)
+
+  vehicleType VehicleType    @default(MOTORBIKE)
+  plateNumber String?
+  city        String
+  status      ChampionStatus @default(PENDING)
+
+  isOnline    Boolean @default(false)
+  isAvailable Boolean @default(true)
+  isSuspended Boolean @default(false)
+
+  currentLat    Float?
+  currentLng    Float?
+
+  rating          Float @default(5.0)
+  totalDeliveries Int   @default(0)
+
+  documents String[]
+
+  // 🛵 FIX: Champion's orders are linked here directly
+  orders Order[] @relation("ChampionOrders")
+  wallet        ChampionWallet?
+
+  bankCode      String?
+  bankName      String?
+  accountNumber String?
+  accountName   String?
+
+  createdAt DateTime @default(now())
+}
+
+
+model ChampionWallet {
+  id               String                @id @default(uuid())
+  championId       String                @unique
+  champion         Champion              @relation(fields: [championId], references: [id], onDelete: Cascade)
+
+  pendingBalance   Decimal               @default(0)  @db.Decimal(12, 2)
+  availableBalance Decimal               @default(0)  @db.Decimal(12, 2)
+
+  transactions     ChampionTransaction[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+}
+
+
+model ChampionTransaction {
+  id          String                  @id @default(uuid())
+  walletId    String
+  wallet      ChampionWallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  amount      Decimal                 @db.Decimal(12, 2)
+  type        ChampionTransactionType // EARNING_PENDING, EARNING_RELEASED, WITHDRAWAL, BONUS
+  status      TransactionStatus     @default(PENDING)
+  reference   String                  @unique
+  description String
+  createdAt   DateTime                @default(now())
+
+  @@index([walletId])
+}
+
+
+model CartItem {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  quantity  Int      @default(1)
+  vendorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  price       Decimal  @db.Decimal(12, 2)
+  images      String[]
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  stock       Int      @default(0)
+  isArchived Boolean  @default(false)
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([vendorId])
+  @@index([categoryId])
+}
+
+
+
+model Order {
+  id          String @id @default(uuid())
+  orderNumber Int    @unique @default(autoincrement())
+
+  // 📦 Multi-Vendor Checkout Grouping
+  groupOrderId String?
+
+  // 👥 Participants
+  customerId String
+  customer   User   @relation("CustomerOrders", fields: [customerId], references: [id])
+
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id])
+
+  championId String?
+  champion   Champion? @relation("ChampionOrders", fields: [championId], references: [id])
+
+  // 🏷️ Coupon & Discount Snapshots
+  couponId               String?
+  coupon                 Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  couponCode             String?            
+  couponFunding          CouponFundingType? // VENDOR or FOODIFY
+  
+  foodDiscountAmount     Decimal  @default(0) @db.Decimal(12, 2)
+  deliveryDiscountAmount Decimal  @default(0) @db.Decimal(12, 2)
+  totalDiscountAmount    Decimal  @default(0) @db.Decimal(12, 2)
+
+  // 📝 Items & History
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+
+  // 💰 Financial Breakdown
+  originalSubtotal    Decimal @default(0) @db.Decimal(12, 2)
+  subtotal            Decimal @default(0) @db.Decimal(12, 2)
+
+  originalDeliveryFee Decimal @default(0) @db.Decimal(12, 2)
+  deliveryFee         Decimal @default(0) @db.Decimal(12, 2)
+
+  packagingFee        Decimal @default(0) @db.Decimal(12, 2)
+  serviceFee          Decimal @default(0) @db.Decimal(12, 2)
+  totalAmount         Decimal @default(0) @db.Decimal(12, 2)
+
+  // 💵 Settlement Calculations
+  vendorRevenue    Decimal @default(0) @db.Decimal(12, 2)
+  championEarnings Decimal @default(0) @db.Decimal(12, 2)
+  foodifyRevenue   Decimal @default(0) @db.Decimal(12, 2)
+
+  status        OrderStatus   @default(AWAITING_PAYMENT)
+  paymentStatus PaymentStatus @default(PENDING)
+  transactionId String?
+
+  deliveryAddress String
+  phone           String
+  deliveryLat     Float?
+  deliveryLng     Float?
+  distance        Float?
+  isPriority      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  couponUsages CouponUsage[]
+
+  @@index([customerId])
+  @@index([vendorId])
+  @@index([championId])
+  @@index([couponId])
+  @@index([groupOrderId])
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Decimal  @db.Decimal(12, 2)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String? // e.g. "ORDER_UPDATE", "PROMO", "SYSTEM"
+  appType   String?
+  isRead    Boolean  @default(false)
+  orderId   String? // Optional: tap notification to view specific order
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique // e.g., "Rice Deals", "Frozen Foods"
+  image     String?   // Optional category icon/banner URL
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model LandmarkNode {
+  id                String   @id @default(uuid())
+  canonicalName     String   // e.g., "Zone C", "Agbada Owo Junction"
+  parentArea        String?   // e.g., "Emere", "Odo Eja"
+  majorCorridor     String?   // e.g., "Bode Olude Axis", "Ilupeju Axis"
+  district          String?   // e.g., "Elega"
+  city              String?   
+  searchAliases     String[] // e.g., ["zone c emere", "emere zone c", "zone c"]
+  
+  latitude          Float?   // Coordinates captured when rider drops off
+  longitude         Float?
+
+  verificationScore Int      @default(0) // 0 = Auto-created/Unverified, 1 to 5 = Confidence
+  isVerified        Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([parentArea])
+  @@index([majorCorridor])
+  @@index([district])
+  @@index([city])
+}
+
+model SupportMessage {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  senderRole  String   // "CUSTOMER" or "ADMIN"
+  message     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  appType   String   // "CUSTOMER" | "VENDOR" | "RIDER"
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([userId, appType])
+}
+
+model Coupon {
+  id                 String         @id @default(uuid())
+  code               String         @unique
+  discountType       DiscountType
+  discountTarget     DiscountTarget @default(DELIVERY) // FOOD or DELIVERY
+  fundingType        CouponFundingType    @default(FOODIFY)
+  discountValue      Float          // E.g., 10 for 10%, 500 for ₦500 off
+  maxDiscountAmount  Float?         // Optional cap for percentage coupons
+  minOrderAmount     Float?         @default(0) // Minimum food subtotal required
+  minVendorCount     Int?           // e.g., 3 for multi-vendor promo
+  maxVendorCount     Int?           // e.g., 1 for single-vendor promo
+  startDate          DateTime?
+  endDate            DateTime?
+  usageLimit         Int?           // Total global limit across all users
+  usageCount         Int            @default(0)
+  userUsageLimit     Int?           @default(1) // Per-user usage limit
+  isActive           Boolean        @default(true)
+  
+  // 🏢 Optional Vendor Scope & Relations
+  vendorId           String?
+  vendor             Vendor?        @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  // 🔗 Relations
+  usages             CouponUsage[]
+  orders             Order[]        // Back-relation for orders where this coupon was applied
+
+  @@index([code])
+  @@index([vendorId])
+}
+
+model CouponUsage {
+  id             String   @id @default(uuid())
+  couponId       String
+  userId         String
+  orderId        String?  // Linked when payment completes / order is finalized
+  discountAmount Decimal  @default(0) @db.Decimal(12, 2) // Track snapshot of amount redeemed
+  createdAt      DateTime @default(now())
+
+  // 🔗 Relations
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order  Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, couponId])
+  @@index([orderId])
+}
