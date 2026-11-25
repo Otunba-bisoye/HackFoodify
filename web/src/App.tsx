@@ -1,5 +1,5 @@
 import { Routes, Route} from 'react-router-dom'
-// import Home from './pages/Home/Home.tsx'
+import Home from './pages/Home/Home.tsx'
 import './App.css'
 import Vendor from './pages/Vendor/Vendor.tsx'
 // import Cart from './pages/Cart/Cart.tsx'
@@ -13,7 +13,7 @@ const App = () => {
     <>
       <div className="app">
         <Routes>
-          {/* <Route index element={<Home/>}/> */}
+          <Route index element={<Home/>}/>
           {/* <Route path="/cart" element={ <ProtectedRoute> <Cart /> </ProtectedRoute> } /> */}
           {/* <Route path="/checkout" element={ <ProtectedRoute> <Checkout /> </ProtectedRoute> } /> */}
           <Route path='/vendor' element={<Vendor/>} />
